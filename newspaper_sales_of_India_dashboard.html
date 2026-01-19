@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Newspaper Sales Performance Dashboard</title>
+  <script src="https://cdn.plot.ly/plotly-2.34.0.min.js"></script>
+  <style>
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: #f4f6f8;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background: #003366;
+      color: white;
+      padding: 15px;
+      text-align: center;
+      font-size: 1.5em;
+    }
+    .upload-container {
+      text-align: center;
+      margin: 20px;
+    }
+    input[type="file"] {
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      background: white;
+    }
+    .dashboard {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin: 20px;
+    }
+    .chart {
+      background: white;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+    #chart5 {
+      grid-column: span 2;
+    }
+  </style>
+</head>
+<body>
+  <header>📰 Newspaper Sales Performance Dashboard</header>
+  <div class="upload-container">
+    <input type="file" id="fileInput" accept=".json" />
+    <p>Upload your JSON sales data file to generate the dashboard</p>
+  </div>
+
+  <div class="dashboard">
+    <div id="chart1" class="chart"></div>
+    <div id="chart2" class="chart"></div>
+    <div id="chart3" class="chart"></div>
+    <div id="chart4" class="chart"></div>
+    <div id="chart5" class="chart"></div>
+  </div>
+
+  <script>
+    document.getElementById("fileInput").addEventListener("change", handleFileUpload);
+
+    function handleFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const data = JSON.parse(e.target.result);
+        generateDashboard(data);
+      };
+      reader.readAsText(file);
+    }
+
+    function parseNumber(str) {
+      if (!str) return 0;
+      str = str.toString().replace(/[^0-9.]/g, "");
+      return parseFloat(str) || 0;
+    }
+
+    function generateDashboard(data) {
+      // Chart 1: Top 10 Newspapers by Circulation
+      const sortedByCirc = data
+        .filter(d => d["Latest Circulation (Copies Sold, Jul-Dec 2022)"])
+        .map(d => ({
+          brand: d["Newspaper Brand"],
+          circulation: parseNumber(d["Latest Circulation (Copies Sold, Jul-Dec 2022)"])
+        }))
+        .sort((a, b) => b.circulation - a.circulation)
+        .slice(0, 10);
+
+      Plotly.newPlot("chart1", [{
+        x: sortedByCirc.map(d => d.brand),
+        y: sortedByCirc.map(d => d.circulation),
+        type: "bar",
+        marker: { color: "#1f77b4" }
+      }], {
+        title: "Top 10 Newspapers by Circulation",
+        xaxis: { title: "Newspaper Brand" },
+        yaxis: { title: "Copies Sold" }
+      });
+
+      // Chart 2: State-wise Circulation vs Readership
+      const byState = {};
+      data.forEach(d => {
+        const state = d["STATE/Union territories"] || "Unknown";
+        const circ = parseNumber(d["Latest Circulation (Copies Sold, Jul-Dec 2022)"]);
+        const read = parseFloat(d["AIR Readership (Millions, 2019)"]) || 0;
+        if (!byState[state]) byState[state] = { circulation: 0, readership: 0 };
+        byState[state].circulation += circ;
+        byState[state].readership += read;
+      });
+      const states = Object.keys(byState);
+      const circulationVals = states.map(s => byState[s].circulation);
+      const readershipVals = states.map(s => byState[s].readership);
+
+      Plotly.newPlot("chart2", [
+        { x: states, y: circulationVals, name: "Circulation", type: "bar" },
+        { x: states, y: readershipVals, name: "Readership (Millions)", type: "bar" }
+      ], {
+        barmode: "group",
+        title: "State-wise Circulation vs Readership",
+        xaxis: { title: "State / Union Territory" },
+        yaxis: { title: "Value" }
+      });
+
+      // Chart 3: Average Estimated Cost by Language
+      const costByLang = {};
+      data.forEach(d => {
+        const lang = d.Language || "Unknown";
+        const costStr = d["Estimated Cost (?/Copy)"];
+        if (!costStr || !costStr.includes("?")) return;
+        const matches = costStr.match(/(\d+(\.\d+)?)/g);
+        if (matches) {
+          const avg = matches.reduce((a, b) => a + parseFloat(b), 0) / matches.length;
+          if (!costByLang[lang]) costByLang[lang] = [];
+          costByLang[lang].push(avg);
+        }
+      });
+      const langs = Object.keys(costByLang);
+      const avgCosts = langs.map(l => {
+        const vals = costByLang[l];
+        return vals.reduce((a, b) => a + b, 0) / vals.length;
+      });
+
+      Plotly.newPlot("chart3", [{
+        x: langs,
+        y: avgCosts,
+        type: "bar",
+        marker: { color: "#2ca02c" }
+      }], {
+        title: "Average Estimated Cost per Copy by Language (₹)",
+        xaxis: { title: "Language" },
+        yaxis: { title: "Average Price (₹)" }
+      });
+
+      // Chart 4: Language Distribution
+      const langCounts = {};
+      data.forEach(d => {
+        const lang = d.Language || "Unknown";
+        langCounts[lang] = (langCounts[lang] || 0) + 1;
+      });
+
+      Plotly.newPlot("chart4", [{
+        labels: Object.keys(langCounts),
+        values: Object.values(langCounts),
+        type: "pie",
+        textinfo: "label+percent"
+      }], {
+        title: "Language Distribution of Newspapers"
+      });
+
+      // Chart 5: Readership Efficiency (Readers per Copy)
+      const efficiency = data
+        .map(d => {
+          const circ = parseNumber(d["Latest Circulation (Copies Sold, Jul-Dec 2022)"]);
+          const read = parseFloat(d["AIR Readership (Millions, 2019)"]) || 0;
+          if (circ > 0 && read > 0) {
+            return {
+              brand: d["Newspaper Brand"],
+              efficiency: (read * 1_000_000) / circ
+            };
+          }
+          return null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.efficiency - a.efficiency)
+        .slice(0, 10);
+
+      Plotly.newPlot("chart5", [{
+        x: efficiency.map(d => d.brand),
+        y: efficiency.map(d => d.efficiency),
+        type: "bar",
+        marker: { color: "#ff7f0e" }
+      }], {
+        title: "Top 10 Newspapers by Readership Efficiency (Readers per Copy)",
+        xaxis: { title: "Newspaper Brand" },
+        yaxis: { title: "Readers per Copy" }
+      });
+    }
+  </script>
+</body>
+</html>
