@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Interactive Sales Dashboard — Newspapers</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Latest Plotly CDN -->
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 16px; background: #f7f9fc; color:#111;}
+    h1 { margin: 0 0 8px 0; font-size: 22px; }
+    .controls { display:flex; gap:12px; flex-wrap:wrap; margin: 12px 0 16px 0; align-items:center; }
+    .controls label { font-size:14px; }
+    .card { background: white; border-radius:8px; padding:12px; box-shadow:0 1px 4px rgba(20,30,60,0.06); }
+    #plots { display: grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    .plot { min-height:320px; }
+    .wide { grid-column: 1 / -1; }
+    input[type=file] { display:inline-block; }
+    select, input[type=number] { padding:6px 8px; border-radius:6px; border:1px solid #cfdce6; background:#fff; }
+    .small { font-size:13px; color:#444; }
+    .footer { margin-top:14px; font-size:13px; color:#666; }
+    @media(max-width:900px){ #plots{ grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h1>Interactive Sales Dashboard — Newspapers (Upload JSON)</h1>
+  <div class="card controls">
+    <label>
+      <strong>Upload JSON file:</strong>
+      <input id="fileInput" type="file" accept=".json,application/json" />
+    </label>
+
+    <label class="small">Language:
+      <select id="filterLanguage"><option value="__ALL__">All</option></select>
+    </label>
+
+    <label class="small">State:
+      <select id="filterState"><option value="__ALL__">All</option></select>
+    </label>
+
+    <label class="small">Top N brands:
+      <input id="topN" type="number" value="6" min="1" max="50" style="width:72px" />
+    </label>
+
+    <button id="refreshBtn">Refresh Dashboard</button>
+    <div style="margin-left:auto; font-size:13px; color:#555;">Data parsed client-side — private to your browser</div>
+  </div>
+
+  <div id="plots">
+    <div id="plot_language" class="plot card"></div>
+    <div id="plot_top_brands" class="plot card"></div>
+    <div id="plot_scatter_rank" class="plot card"></div>
+    <div id="plot_price_bubble" class="plot card"></div>
+    <div id="plot_class_state" class="plot card wide"></div>
+  </div>
+
+  <div class="footer card small">
+    Tips: Use the filters and Top N selector to update charts. Hover points for details. Click legend items to toggle series.
+  </div>
+
+<script>
+/*
+  Dashboard script
+  - Accepts JSON array of objects. Keys supported:
+    Either A..H (as in your JSON) or the descriptive headers:
+    Brand, Language, Classification, Avg. Daily Circulation (Approx. Copies Sold, 2022),
+    All-India Readership Rank (IRS 2019), Approx. Monthly Cost (2024),
+    City/Edition Focus, Primary State Focus
+  - Parses numeric fields robustly (removes commas, rupee symbols, non-digits)
+  - Builds five interactive Plotly charts
+*/
+
+// Utility: normalize object keys to friendly names
+function normalizeRow(raw) {
+  const map = (k) => {
+    if (!k) return null;
+    const key = k.toString().trim().toLowerCase();
+    if (["a","brand"].includes(key)) return "Brand";
+    if (["b","language"].includes(key)) return "Language";
+    if (["c","classification"].includes(key)) return "Classification";
+    if (["d","avg. daily circulation (approx. copies sold, 2022)","avg_daily_circulation"].includes(key)) return "CirculationRaw";
+    if (["e","all-india readership rank (irs 2019)","readership_rank"].includes(key)) return "RankRaw";
+    if (["f","approx. monthly cost (2024)","cost"].includes(key)) return "CostRaw";
+    if (["g","city/edition focus","city"].includes(key)) return "CityFocus";
+    if (["h","primary state focus","state","primary state focus"].includes(key)) return "StateFocus";
+    // fallback to original capitalized
+    return k;
+  };
+
+  const out = {};
+  for (const k in raw) {
+    const nk = map(k);
+    out[nk || k] = raw[k];
+  }
+  // Also attempt direct-descriptive field names if present
+  if (!out.Brand && raw.Brand) out.Brand = raw.Brand;
+  if (!out.Language && raw.Language) out.Language = raw.Language;
+  if (!out.Classification && raw.Classification) out.Classification = raw.Classification;
+  if (!out.CirculationRaw && raw["Avg. Daily Circulation (Approx. Copies Sold, 2022)"]) out.CirculationRaw = raw["Avg. Daily Circulation (Approx. Copies Sold, 2022)"];
+  if (!out.RankRaw && raw["All-India Readership Rank (IRS 2019)"]) out.RankRaw = raw["All-India Readership Rank (IRS 2019)"];
+  if (!out.CostRaw && raw["Approx. Monthly Cost (2024)"]) out.CostRaw = raw["Approx. Monthly Cost (2024)"];
+  if (!out.CityFocus && raw["City/Edition Focus"]) out.CityFocus = raw["City/Edition Focus"];
+  if (!out.StateFocus && raw["Primary State Focus"]) out.StateFocus = raw["Primary State Focus"];
+
+  return out;
+}
+
+// Parse numeric helpers
+function parseNumberFromText(txt) {
+  if (txt === null || txt === undefined) return null;
+  const s = String(txt).trim();
+  if (s === "" || s.toLowerCase().includes("n/a")) return null;
+  // Remove rupee sign and words like 'Month', 'Readership', parentheses, ~, commas, spaces
+  // Keep digits only
+  const digits = s.replace(/[^0-9.-]/g, '');
+  if (digits === '') return null;
+  const n = Number(digits);
+  return isFinite(n) ? n : null;
+}
+
+// Parse circulation: large numbers may be comma-separated (e.g., 1,351,956)
+function parseCirculation(txt) {
+  const n = parseNumberFromText(txt);
+  return n;
+}
+
+// Parse rank (may be 'N/A')
+function parseRank(txt) {
+  const n = parseNumberFromText(txt);
+  return n;
+}
+
+// Parse cost rupee string (₹215/Month)
+function parseCost(txt) {
+  const n = parseNumberFromText(txt);
+  return n;
+}
+
+// Load data from JSON array
+let rawData = [];
+let dataRows = [];
+
+function ingestData(arr) {
+  rawData = Array.isArray(arr) ? arr : [];
+  dataRows = rawData.map(r => {
+    const row = normalizeRow(r);
+    const Brand = row.Brand || row.A || row['A'] || '';
+    const Language = row.Language || row.B || row['B'] || 'Unknown';
+    const Classification = row.Classification || row.C || row['C'] || '';
+    const CirculationRaw = row.CirculationRaw || row.D || row['D'] || '';
+    const RankRaw = row.RankRaw || row.E || row['E'] || '';
+    const CostRaw = row.CostRaw || row.F || row['F'] || '';
+    const CityFocus = row.CityFocus || row.G || row['G'] || '';
+    const StateFocus = row.StateFocus || row.H || row['H'] || '';
+
+    const Circulation = parseCirculation(CirculationRaw);
+    const Rank = parseRank(RankRaw);
+    const Cost = parseCost(CostRaw);
+
+    return {
+      Brand: String(Brand).trim(),
+      Language: String(Language).trim(),
+      Classification: String(Classification).trim(),
+      CirculationRaw: CirculationRaw,
+      Circulation: Circulation,
+      RankRaw: RankRaw,
+      Rank: Rank,
+      CostRaw: CostRaw,
+      Cost: Cost,
+      CityFocus: String(CityFocus).trim(),
+      StateFocus: String(StateFocus).trim()
+    };
+  });
+
+  // Remove rows without brand or without any numeric fields? Keep as is but mark nulls.
+  populateFilters();
+}
+
+// Populate filters (language, state)
+function populateFilters() {
+  const langSet = new Set();
+  const stateSet = new Set();
+  dataRows.forEach(r => { if (r.Language) langSet.add(r.Language); if (r.StateFocus) stateSet.add(r.StateFocus); });
+
+  const filterLang = document.getElementById('filterLanguage');
+  const filterState = document.getElementById('filterState');
+  // clear
+  filterLang.innerHTML = '<option value="__ALL__">All</option>';
+  filterState.innerHTML = '<option value="__ALL__">All</option>';
+
+  [...langSet].sort().forEach(l => {
+    const opt = document.createElement('option'); opt.value = l; opt.textContent = l; filterLang.appendChild(opt);
+  });
+  [...stateSet].sort().forEach(s => {
+    const opt = document.createElement('option'); opt.value = s; opt.textContent = s; filterState.appendChild(opt);
+  });
+}
+
+// Filtering
+function getFilteredRows() {
+  const lang = document.getElementById('filterLanguage').value;
+  const state = document.getElementById('filterState').value;
+  return dataRows.filter(r => {
+    if (lang !== '__ALL__' && r.Language !== lang) return false;
+    if (state !== '__ALL__' && r.StateFocus !== state) return false;
+    return true;
+  });
+}
+
+// Chart 1: Circulation by Language
+function drawCirculationByLanguage(rows) {
+  // aggregate sum of circulation by language
+  const sums = {};
+  rows.forEach(r => { const v = r.Circulation || 0; sums[r.Language] = (sums[r.Language] || 0) + v; });
+  const languages = Object.keys(sums).sort((a,b)=>sums[b]-sums[a]);
+  const values = languages.map(l => sums[l]);
+  const data = [{ x: languages, y: values, type: 'bar', marker:{color:'#2a9df4'}, hovertemplate: '%{x}<br>Circulation: %{y:,.0f}<extra></extra>' }];
+  const layout = { title: 'Total Circulation by Language', margin:{t:40,l:50,r:20,b:80}, yaxis:{title:'Total Circulation (approx)'}, xaxis:{title:'Language'} };
+  Plotly.newPlot('plot_language', data, layout, {responsive:true});
+}
+
+// Chart 2: Top N Newspapers by Circulation
+function drawTopBrands(rows, topN) {
+  const sums = {};
+  rows.forEach(r=> { const v = r.Circulation || 0; sums[r.Brand] = (sums[r.Brand] || 0) + v; });
+  const arr = Object.entries(sums).map(([brand, val]) => ({brand, val})).sort((a,b)=>b.val - a.val);
+  const top = arr.slice(0, topN);
+  const y = top.map(t=>t.brand);
+  const x = top.map(t=>t.val);
+  const data = [{ x: x, y: y, orientation:'h', type:'bar', marker:{color:'#6f42c1'}, hovertemplate: '%{y}<br>Circulation: %{x:,.0f}<extra></extra>' }];
+  const layout = { title: `Top ${topN} Newspapers by Circulation`, margin:{t:40,l:220,r:20,b:40}, xaxis:{title:'Circulation (approx)'} };
+  Plotly.newPlot('plot_top_brands', data, layout, {responsive:true});
+}
+
+// Chart 3: Circulation vs Readership Rank (scatter)
+function drawCirculationVsRank(rows) {
+  const valid = rows.filter(r => r.Rank !== null && r.Circulation !== null);
+  const x = valid.map(r => r.Rank);
+  const y = valid.map(r => r.Circulation);
+  const text = valid.map(r => `${r.Brand} (${r.Language})`);
+  const marker = { size: 10, color: valid.map(r => r.Classification || 'Other'), showscale:false };
+  const data = [{ x, y, mode:'markers', type:'scatter', text, hovertemplate: '%{text}<br>Rank: %{x}<br>Circulation: %{y:,.0f}<extra></extra>', marker }];
+
+  const layout = { title: 'Circulation vs. Readership Rank (lower rank = higher popularity)', xaxis:{title:'IRS Readership Rank (numeric)'}, yaxis:{title:'Circulation (approx)'}, margin:{t:50} };
+  Plotly.newPlot('plot_scatter_rank', data, layout, {responsive:true});
+}
+
+// Chart 4: Price vs Circulation Bubble Chart
+function drawPriceBubble(rows) {
+  const valid = rows.filter(r => r.Cost !== null && r.Circulation !== null);
+  // group by Brand to aggregate if duplicates exist
+  const map = {};
+  valid.forEach(r => {
+    if (!map[r.Brand]) map[r.Brand] = {Brand:r.Brand, Cost:r.Cost, Circulation:0, Classification:r.Classification, Language:r.Language};
+    map[r.Brand].Circulation += r.Circulation;
+  });
+  const agg = Object.values(map);
+  const x = agg.map(a => a.Cost);
+  const y = agg.map(a => a.Circulation);
+  const sizesRaw = agg.map(a => a.Circulation);
+  // scale bubble size
+  const maxSize = Math.max(...sizesRaw, 1);
+  const sizes = sizesRaw.map(s => Math.max(8, (s / maxSize) * 60));
+  const texts = agg.map(a => `${a.Brand} (${a.Language})<br>Cost: ₹${a.Cost}<br>Circulation: ${a.Circulation}`);
+  const classifications = agg.map(a => a.Classification || 'Other');
+  // assign color per classification
+  const uniqueClass = [...new Set(classifications)];
+  const colorMap = {};
+  const palette = ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b'];
+  uniqueClass.forEach((c,i)=> colorMap[c] = palette[i % palette.length]);
+  const colors = classifications.map(c=> colorMap[c] || '#7f7f7f');
+
+  const data = [{
+    x, y, text: texts,
+    mode:'markers',
+    marker:{ size: sizes, color: colors, sizemode:'area', opacity:0.8, line:{width:1,color:'#333'} },
+    hovertemplate: '%{text}<extra></extra>'
+  }];
+
+  const legendTraces = uniqueClass.map((c, i) => ({
+    x:[null], y:[null], mode:'markers', name:c, marker:{size:12, color: colorMap[c]}
+  }));
+
+  const layout = { title:'Price vs Circulation (bubble size = circulation)', xaxis:{title:'Monthly Cost (₹)'}, yaxis:{title:'Circulation (approx)'}, margin:{t:50} };
+  Plotly.newPlot('plot_price_bubble', [...data, ...legendTraces], layout, {responsive:true});
+}
+
+// Chart 5: Circulation by Classification and State (stacked)
+function drawClassByState(rows) {
+  // we'll aggregate circulation per state & classification
+  const map = {};
+  rows.forEach(r => {
+    const state = r.StateFocus || 'Unknown';
+    const cls = r.Classification || 'Other';
+    if (!map[state]) map[state] = {};
+    map[state][cls] = (map[state][cls] || 0) + (r.Circulation || 0);
+  });
+  const states = Object.keys(map).sort();
+  // gather all classifications
+  const classesSet = new Set();
+  states.forEach(s => Object.keys(map[s]).forEach(c => classesSet.add(c)));
+  const classes = [...classesSet];
+  const traces = classes.map(cls => {
+    return {
+      x: states,
+      y: states.map(s => map[s][cls] || 0),
+      name: cls,
+      type: 'bar'
+    };
+  });
+  const layout = { barmode:'stack', title:'Circulation by Classification across States', xaxis:{title:'State'}, yaxis:{title:'Total Circulation (approx)'} };
+  Plotly.newPlot('plot_class_state', traces, layout, {responsive:true});
+}
+
+// Master draw function
+function drawAll() {
+  const rows = getFilteredRows();
+  drawCirculationByLanguage(rows);
+  const topN = Math.max(1, parseInt(document.getElementById('topN').value || 6));
+  drawTopBrands(rows, topN);
+  drawCirculationVsRank(rows);
+  drawPriceBubble(rows);
+  drawClassByState(rows);
+}
+
+// File upload handler
+document.getElementById('fileInput').addEventListener('change', function(evt){
+  const file = evt.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try {
+      const json = JSON.parse(e.target.result);
+      ingestData(json);
+      drawAll();
+    } catch(err) {
+      alert('Error parsing JSON: ' + err.message);
+      console.error(err);
+    }
+  };
+  reader.readAsText(file);
+});
+
+// Refresh button and filter changes
+document.getElementById('refreshBtn').addEventListener('click', drawAll);
+document.getElementById('filterLanguage').addEventListener('change', drawAll);
+document.getElementById('filterState').addEventListener('change', drawAll);
+document.getElementById('topN').addEventListener('change', drawAll);
+
+</script>
+</body>
+</html>

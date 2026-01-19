@@ -1,0 +1,132 @@
+[
+  {
+    "A": "Brand",
+    "B": "Language",
+    "C": "Classification",
+    "D": "Avg. Daily Circulation (Approx. Copies Sold, 2022)",
+    "E": "All-India Readership Rank (IRS 2019)",
+    "F": "Approx. Monthly Cost (2024)",
+    "G": "City/Edition Focus",
+    "H": "Primary State Focus"
+  },
+  {
+    "A": "Eenadu",
+    "B": "Telugu",
+    "C": "Big Daily",
+    "D": "1,351,956",
+    "E": "11",
+    "F": "₹215/Month",
+    "G": "Hyderabad & Vizag",
+    "H": "Both(AP&TS)"
+  },
+  {
+    "A": "Sakshi",
+    "B": "Telugu",
+    "C": "Big Daily",
+    "D": "1,002,585",
+    "E": "14",
+    "F": "₹175/Month",
+    "G": "Hyderabad & Vizag",
+    "H": "Both(AP&TS)"
+  },
+  {
+    "A": "Andhra Jyothi",
+    "B": "Telugu",
+    "C": "Big Daily",
+    "D": "386,797",
+    "E": "28",
+    "F": "₹215/Month",
+    "G": "Hyderabad & Vizag",
+    "H": "Both(AP&TS)"
+  },
+  {
+    "A": "Namasthe Telangana",
+    "B": "Telugu",
+    "C": "Big Daily",
+    "D": "~31,49,000 Readership (Telangana Only)",
+    "E": "N/A",
+    "F": "Variable/Low",
+    "G": "Hyderabad & Vizag",
+    "H": "Both(AP&TS)"
+  },
+  {
+    "A": "Andhra Bhoomi",
+    "B": "Telugu",
+    "C": "Medium Daily",
+    "D": "N/A (Lower than top 3)",
+    "E": "N/A",
+    "F": "Low",
+    "G": "Hyderabad & Vizag",
+    "H": "Both(AP&TS)"
+  },
+  {
+    "A": "Vaartha",
+    "B": "Telugu",
+    "C": "Medium Daily",
+    "D": "N/A (Lower than top 3)",
+    "E": "N/A",
+    "F": "Low",
+    "G": "Hyderabad & Vizag",
+    "H": "Both(AP&TS)"
+  },
+  {
+    "A": "Deccan Chronicle",
+    "B": "English",
+    "C": "Big Daily",
+    "D": "~526,447 (Hyderabad Edition)",
+    "E": "N/A",
+    "F": "₹195/Month",
+    "G": "Hyderabad & Vizag",
+    "H": "Both(AP&TS)"
+  },
+  {
+    "A": "The Times of India",
+    "B": "English",
+    "C": "Big Daily",
+    "D": "~297,000 (Hyderabad Edition)",
+    "E": "9",
+    "F": "₹160/Month",
+    "G": "Hyderabad & Vizag",
+    "H": "Both(AP&TS)"
+  },
+  {
+    "A": "The Hindu",
+    "B": "English",
+    "C": "Big Daily",
+    "D": "N/A (Very strong urban base)",
+    "E": "N/A",
+    "F": "₹165/Month",
+    "G": "Hyderabad & Vizag",
+    "H": "Both(AP&TS)"
+  },
+  {
+    "A": "The Siasat Daily",
+    "B": "Urdu",
+    "C": "Medium Daily",
+    "D": "~45,904",
+    "E": "N/A",
+    "F": "₹145/Month",
+    "G": "Hyderabad",
+    "H": "Telangana"
+  },
+  {
+    "A": "The Munsif Daily",
+    "B": "Urdu",
+    "C": "Medium Daily",
+    "D": "N/A",
+    "E": "N/A",
+    "F": "Low",
+    "G": "Hyderabad",
+    "H": "Telangana"
+  },
+  {
+    "A": "Daily Hindi Milap",
+    "B": "Hindi",
+    "C": "Medium Daily",
+    "D": "N/A",
+    "E": "N/A",
+    "F": "Low",
+    "G": "Hyderabad",
+    "H": "Telangana"
+  }
+]
